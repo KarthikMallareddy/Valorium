@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "canisters": {
+    "backend": {
+      "type": "rust",
+      "package": "backend",
+      "candid": "src/backend/backend.did"
+    },
+    "frontend": {
+      "type": "assets",
+      "source": [
+        "src/frontend/out"
+      ],
+      "dependencies": [
+        "backend"
+      ]
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "npm --prefix src/frontend",
+      "args": "install"
+    }
+  },
+  "output_env_file": ".env"
+}
