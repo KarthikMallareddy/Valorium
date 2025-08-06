@@ -24,6 +24,9 @@ export default function Dashboard() {
     switchDemoAccount,
     resetDemo,
     toggleDemoMode,
+    createDemoAccount,
+    deleteDemoAccount,
+    getCustomDemoAccounts,
     isOwner,
     getAllTransactions,
     getSystemStats,
@@ -41,6 +44,12 @@ export default function Dashboard() {
   const [mintAmount, setMintAmount] = useState('');
   const [burnAmount, setBurnAmount] = useState('');
   const [adminLoading, setAdminLoading] = useState(false);
+
+  // Account creation state
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountAvatar, setNewAccountAvatar] = useState('👤');
+  const [accountCreationLoading, setAccountCreationLoading] = useState(false);
 
   // Load wallet info when authenticated
   useEffect(() => {
@@ -145,6 +154,56 @@ export default function Dashboard() {
     }
   }, [isAuthenticated]);
 
+  // Account creation functions
+  const handleCreateAccount = async () => {
+    if (!newAccountName.trim()) {
+      alert('Please enter an account name');
+      return;
+    }
+
+    setAccountCreationLoading(true);
+    try {
+      const result = createDemoAccount(newAccountName.trim(), newAccountAvatar);
+      
+      if (result.success) {
+        // Reset form
+        setNewAccountName('');
+        setNewAccountAvatar('👤');
+        setShowCreateAccount(false);
+        
+        // Refresh system stats if owner
+        if (isOwner()) {
+          await loadSystemStats();
+        }
+        
+        // Show success message with instructions
+        alert(`${result.message}\n\nTip: Click on your new account below to switch to it and start sending VAL tokens to other accounts!`);
+      } else {
+        alert(result.message);
+      }
+    } finally {
+      setAccountCreationLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: string, accountName: string) => {
+    if (confirm(`Are you sure you want to delete the account "${accountName}"? This action cannot be undone.`)) {
+      const result = deleteDemoAccount(accountId);
+      
+      if (result.success) {
+        // Refresh system stats if owner
+        if (isOwner()) {
+          await loadSystemStats();
+        }
+        alert(result.message);
+      } else {
+        alert(result.message);
+      }
+    }
+  };
+
+  const avatarOptions = ['👤', '👨‍💼', '👩‍💼', '👨‍💻', '👩‍💻', '👨‍🎨', '👩‍🎨', '👨‍🔬', '👩‍🔬', '👨‍🎓', '👩‍🎓', '🧑‍💼', '🧑‍💻', '🧑‍🎨', '🧑‍🔬', '🧑‍🎓', '👦', '👧', '🧒', '👶'];
+
   if (!isConnected) {
     return (
       <div className="container mx-auto p-6 max-w-4xl">
@@ -195,7 +254,7 @@ export default function Dashboard() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4 text-blue-800">🎭 Demo Accounts</h2>
           <p className="text-blue-700 mb-4">
-            Switch between demo accounts to test transfers and see different wallet balances!
+            Click on any account below to switch to it and start sending/receiving VAL tokens!
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -228,6 +287,157 @@ export default function Dashboard() {
                 )}
               </div>
             ))}
+          </div>
+
+          {/* Account Creation Section */}
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Create New Demo Account</h3>
+                <p className="text-sm text-gray-600">
+                  Get 100 VAL free! ({15 - getCustomDemoAccounts().length} free accounts remaining)
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreateAccount(!showCreateAccount)}
+                disabled={getCustomDemoAccounts().length >= 15}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {getCustomDemoAccounts().length >= 15 ? 'Limit Reached' : (showCreateAccount ? 'Cancel' : '+ Create Account')}
+              </button>
+            </div>
+
+            {showCreateAccount && getCustomDemoAccounts().length < 15 && (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-blue-600">🎁</span>
+                    <p className="text-blue-800 font-medium">Welcome Bonus: 100 VAL</p>
+                  </div>
+                  <p className="text-blue-700 text-sm mt-1">
+                    Your new account will automatically receive 100 VAL tokens to get started!
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Account Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newAccountName}
+                    onChange={(e) => setNewAccountName(e.target.value)}
+                    placeholder="Enter your account name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Choose Avatar
+                  </label>
+                  <div className="grid grid-cols-10 gap-2">
+                    {avatarOptions.map((avatar, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setNewAccountAvatar(avatar)}
+                        className={`p-2 text-2xl rounded-md border-2 transition-all ${
+                          newAccountAvatar === avatar
+                            ? 'border-green-500 bg-green-100'
+                            : 'border-gray-200 hover:border-green-300'
+                        }`}
+                      >
+                        {avatar}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleCreateAccount}
+                    disabled={accountCreationLoading || !newAccountName.trim()}
+                    className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {accountCreationLoading ? 'Creating...' : 'Create Account & Get 100 VAL'}
+                  </button>
+                  <button
+                    onClick={() => setShowCreateAccount(false)}
+                    className="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Limit Reached Message */}
+            {getCustomDemoAccounts().length >= 15 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-orange-600">⚠️</span>
+                  <p className="text-orange-800 font-medium">Account Creation Limit Reached</p>
+                </div>
+                <p className="text-orange-700 text-sm mt-1">
+                  You have created the maximum of 15 free accounts. Contact the admin if you need more accounts.
+                </p>
+              </div>
+            )}
+
+            {/* Custom Accounts List */}
+            {getCustomDemoAccounts().length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-md font-medium text-gray-700 mb-2">
+                  Your Custom Accounts ({getCustomDemoAccounts().length}/15)
+                </h4>
+                <div className="space-y-2">
+                  {getCustomDemoAccounts().map((account) => (
+                    <div
+                      key={account.id}
+                      className={`flex items-center justify-between rounded-lg p-3 cursor-pointer transition-all ${
+                        currentDemoAccount?.id === account.id
+                          ? 'bg-blue-100 border-2 border-blue-500 ring-2 ring-blue-300'
+                          : 'bg-green-50 border-2 border-green-200 hover:border-green-400 hover:bg-green-100'
+                      }`}
+                      onClick={() => switchDemoAccount(account.id)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xl">{account.avatar}</span>
+                        <div>
+                          <p className="font-medium text-gray-800">{account.name}</p>
+                          <p className="text-sm text-green-600">100 VAL (Welcome Bonus)</p>
+                          {currentDemoAccount?.id === account.id && (
+                            <p className="text-xs text-blue-600 font-medium">✓ Currently Active</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {currentDemoAccount?.id !== account.id && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              switchDemoAccount(account.id);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium bg-blue-100 px-2 py-1 rounded"
+                          >
+                            Use Account
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAccount(account.id, account.name);
+                          }}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -270,6 +480,19 @@ export default function Dashboard() {
               {isDemoMode ? 'Switch Account' : 'Logout'}
             </button>
           </div>
+          
+          {/* Show special message for custom accounts */}
+          {isDemoMode && currentDemoAccount && getCustomDemoAccounts().some(acc => acc.id === currentDemoAccount.id) && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-center space-x-2">
+                <span className="text-blue-600">🎉</span>
+                <p className="text-blue-800 font-medium">Welcome to your custom account!</p>
+              </div>
+              <p className="text-blue-700 text-sm mt-1">
+                You have 100 VAL to start with. Use the transfer section below to send tokens to other accounts!
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -456,28 +679,64 @@ export default function Dashboard() {
       {/* Quick Transfer to Demo Accounts */}
       {isAuthenticated && walletInfo && isDemoMode && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Quick Transfer to Demo Accounts</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {demoAccounts
-              .filter(account => account.id !== currentDemoAccount?.id)
-              .map((account) => (
-                <div key={account.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-xl">{account.avatar}</span>
-                    <div>
-                      <p className="font-medium">{account.name}</p>
-                      <p className="text-sm text-gray-500">{formatPrincipal(account.principal)}</p>
+          <h2 className="text-xl font-semibold mb-4">Quick Transfer to Other Accounts</h2>
+          <p className="text-gray-600 mb-4">
+            Send VAL tokens to any demo account or custom account. Select a recipient below:
+          </p>
+          
+          {/* Demo Accounts */}
+          <div className="mb-4">
+            <h3 className="text-lg font-medium mb-2">Demo Accounts</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {demoAccounts
+                .filter(account => account.id !== currentDemoAccount?.id)
+                .map((account) => (
+                  <div key={account.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xl">{account.avatar}</span>
+                      <div>
+                        <p className="font-medium">{account.name}</p>
+                        <p className="text-sm text-gray-500">{formatPrincipal(account.principal)}</p>
+                      </div>
                     </div>
+                    <button
+                      onClick={() => setTransferTo(account.principal.toString())}
+                      className="bg-blue-100 text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-200"
+                    >
+                      Select
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setTransferTo(account.principal.toString())}
-                    className="bg-blue-100 text-blue-600 px-3 py-1 rounded text-sm hover:bg-blue-200"
-                  >
-                    Select
-                  </button>
-                </div>
-              ))}
+                ))}
+            </div>
           </div>
+
+          {/* Custom Accounts */}
+          {getCustomDemoAccounts().filter(account => account.id !== currentDemoAccount?.id).length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium mb-2">Custom Accounts</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {getCustomDemoAccounts()
+                  .filter(account => account.id !== currentDemoAccount?.id)
+                  .map((account) => (
+                    <div key={account.id} className="flex items-center justify-between p-3 border border-green-200 bg-green-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xl">{account.avatar}</span>
+                        <div>
+                          <p className="font-medium">{account.name}</p>
+                          <p className="text-sm text-gray-500">{formatPrincipal(account.principal)}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setTransferTo(account.principal.toString())}
+                        className="bg-green-100 text-green-600 px-3 py-1 rounded text-sm hover:bg-green-200"
+                      >
+                        Select
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

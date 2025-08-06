@@ -243,6 +243,25 @@ class BackendService {
     return demoAccountManager.getCurrentAccount();
   }
 
+  createDemoAccount(name: string, avatar: string = '👤'): { success: boolean; account?: DemoAccount; message: string } {
+    if (!this.demoMode) {
+      return { success: false, message: 'Account creation only available in demo mode' };
+    }
+    return demoAccountManager.createAccount(name, avatar);
+  }
+
+  deleteDemoAccount(accountId: string): { success: boolean; message: string } {
+    if (!this.demoMode) {
+      return { success: false, message: 'Account deletion only available in demo mode' };
+    }
+    return demoAccountManager.deleteAccount(accountId);
+  }
+
+  getCustomDemoAccounts(): DemoAccount[] {
+    if (!this.demoMode) return [];
+    return demoAccountManager.getCustomAccounts();
+  }
+
   resetDemo(): void {
     if (this.demoMode) {
       demoAccountManager.resetDemo();

@@ -16,7 +16,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     id: 'owner',
     name: 'Karthik Mallareddy (Owner)',
     principal: Principal.fromText('rdmx6-jaaaa-aaaaa-aaadq-cai'),
-    initialBalance: 10000000, // 10 Million VAL - Founder's supply
+    initialBalance: 100000, // 100,000 VAL - Enough to fund 1000 new accounts
     avatar: '👑'
   },
   {
@@ -67,15 +67,36 @@ export class DemoAccountManager {
     timestamp: number;
     description: string;
   }> = [];
+  private customAccounts: DemoAccount[] = [];
+  private storageKey = 'valorium_demo_data';
 
   constructor() {
-    // Initialize balances
+    // Load from localStorage if available
+    this.loadFromStorage();
+    
+    // Initialize balances for default accounts
     DEMO_ACCOUNTS.forEach(account => {
-      this.balances.set(account.principal.toString(), account.initialBalance);
+      if (!this.balances.has(account.principal.toString())) {
+        this.balances.set(account.principal.toString(), account.initialBalance);
+      }
     });
 
-    // Add some sample transactions
-    this.addSampleTransactions();
+    // Add some sample transactions if none exist
+    if (this.transactions.length === 0) {
+      this.addSampleTransactions();
+    }
+
+    // Test Principal ID generation to ensure it works
+    try {
+      const testId = this.generatePrincipalId();
+      Principal.fromText(testId);
+      console.log('Principal ID generation test passed:', testId);
+    } catch (error) {
+      console.error('Principal ID generation test failed:', error);
+    }
+
+    // Save initial state
+    this.saveToStorage();
   }
 
   private addSampleTransactions() {
@@ -109,10 +130,212 @@ export class DemoAccountManager {
     ];
   }
 
+  // Storage methods for persistence
+  private saveToStorage() {
+    if (typeof window !== 'undefined') {
+      const data = {
+        balances: Array.from(this.balances.entries()),
+        transactions: this.transactions,
+        customAccounts: this.customAccounts,
+        currentAccountId: this.currentAccount?.id || null
+      };
+      localStorage.setItem(this.storageKey, JSON.stringify(data));
+    }
+  }
+
+  private loadFromStorage() {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(this.storageKey);
+        if (stored) {
+          const data = JSON.parse(stored);
+          this.balances = new Map(data.balances || []);
+          this.transactions = data.transactions || [];
+          this.customAccounts = data.customAccounts || [];
+          
+          // Restore current account
+          if (data.currentAccountId) {
+            const allAccounts = [...DEMO_ACCOUNTS, ...this.customAccounts];
+            this.currentAccount = allAccounts.find(acc => acc.id === data.currentAccountId) || null;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load demo data from storage:', error);
+      }
+    }
+  }
+
+  // Generate a unique Principal ID for new accounts
+  private generatePrincipalId(): string {
+    // Use a pre-validated set of Principal IDs to avoid checksum issues
+    // These are all valid Principal IDs that we can safely use for demo accounts
+    const availablePrincipalIds = [
+      'rrkah-fqaaa-aaaaa-aaaaq-cai',
+      'rno2w-sqaaa-aaaaa-aaaaq-cai',
+      'rdmx6-jaaaa-aaaaa-aaaaq-cai',
+      'rcyqb-siaaa-aaaaa-aaaaq-cai',
+      'rastt-hiaaa-aaaaa-aaaaq-cai',
+      'r7inp-6aaaa-aaaaa-aaaaq-cai',
+      'qvhpv-4qaaa-aaaaa-aaaaq-cai',
+      'qsgjb-riaaa-aaaaa-aaaaq-cai',
+      'qoctq-giaaa-aaaaa-aaaaq-cai',
+      'qjdve-lqaaa-aaaaa-aaaaq-cai',
+      'qdhpv-kiaaa-aaaaa-aaaaq-cai',
+      'q4eej-kyaaa-aaaaa-aaaaq-cai',
+      'pzp6e-ekaaa-aaaaa-aaaaq-cai',
+      'pwctb-byaaa-aaaaa-aaaaq-cai',
+      'pvlon-siaaa-aaaaa-aaaaq-cai',
+      'ptbq6-liaaa-aaaaa-aaaaq-cai',
+      'prpte-eyaaa-aaaaa-aaaaq-cai',
+      'pqafw-uyaaa-aaaaa-aaaaq-cai',
+      'pmhly-uqaaa-aaaaa-aaaaq-cai',
+      'pljqf-tiaaa-aaaaa-aaaaq-cai',
+      'pj6a4-xiaaa-aaaaa-aaaaq-cai',
+      'piqdn-gyaaa-aaaaa-aaaaq-cai',
+      'pfgej-wiaaa-aaaaa-aaaaq-cai',
+      'pe2qe-jyaaa-aaaaa-aaaaq-cai',
+      'pcrsq-4iaaa-aaaaa-aaaaq-cai',
+      'pb3vg-bqaaa-aaaaa-aaaaq-cai',
+      'p6mtu-uyaaa-aaaaa-aaaaq-cai',
+      'p5ilm-xiaaa-aaaaa-aaaaq-cai',
+      'p4bbn-aqaaa-aaaaa-aaaaq-cai',
+      'p22dk-gqaaa-aaaaa-aaaaq-cai'
+    ];
+
+    // Get already used Principal IDs
+    const usedIds = new Set();
+    DEMO_ACCOUNTS.forEach(acc => usedIds.add(acc.principal.toString()));
+    this.customAccounts.forEach(acc => usedIds.add(acc.principal.toString()));
+
+    // Find an unused Principal ID
+    for (const id of availablePrincipalIds) {
+      if (!usedIds.has(id)) {
+        // Validate it works
+        try {
+          Principal.fromText(id);
+          return id;
+        } catch (error) {
+          console.warn(`Principal ID ${id} validation failed:`, error);
+          continue;
+        }
+      }
+    }
+
+    // If all pre-defined IDs are used, generate a simple incremental one
+    // This is a fallback that should rarely be needed
+    const baseId = 'u';
+    const counter = this.customAccounts.length + 1000; // Start from 1000 to avoid conflicts
+    const paddedCounter = counter.toString().padStart(4, '0');
+    const generatedId = `${baseId}${paddedCounter}-aaaaa-aaaaa-aaaaq-cai`;
+    
+    try {
+      Principal.fromText(generatedId);
+      return generatedId;
+    } catch (error) {
+      // Last resort: use a timestamp-based approach
+      const timestamp = Date.now().toString(36);
+      const fallbackId = `u${timestamp.slice(-4)}-aaaaa-aaaaa-aaaaq-cai`;
+      return fallbackId;
+    }
+  }
+
+  // Create a new demo account
+  createAccount(name: string, avatar: string = '👤'): { success: boolean; account?: DemoAccount; message: string } {
+    try {
+      // Validate inputs
+      if (!name || name.trim().length === 0) {
+        return { success: false, message: 'Account name is required' };
+      }
+
+      // Check if name already exists
+      const allAccounts = [...DEMO_ACCOUNTS, ...this.customAccounts];
+      if (allAccounts.some(acc => acc.name.toLowerCase() === name.trim().toLowerCase())) {
+        return { success: false, message: 'Account name already exists' };
+      }
+
+      // Check if we've reached the limit of 15 free accounts
+      if (this.customAccounts.length >= 15) {
+        return { success: false, message: 'Maximum of 15 free accounts reached. Contact admin for more accounts.' };
+      }
+
+      // Fixed initial balance of 100 VAL for first 15 accounts
+      const initialBalance = 100;
+
+      // Generate unique ID and Principal
+      const accountId = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      let principalId: string;
+      let principal: Principal;
+      
+      try {
+        principalId = this.generatePrincipalId();
+        principal = Principal.fromText(principalId);
+      } catch (error) {
+        console.error('Failed to generate valid Principal ID:', error);
+        return { 
+          success: false, 
+          message: 'Failed to generate account identifier. Please try again.' 
+        };
+      }
+
+      // Create new account
+      const newAccount: DemoAccount = {
+        id: accountId,
+        name: name.trim(),
+        principal: principal,
+        initialBalance: initialBalance,
+        avatar: avatar
+      };
+
+      // Add to custom accounts and set balance
+      this.customAccounts.push(newAccount);
+      this.balances.set(principal.toString(), initialBalance);
+
+      // Transfer tokens from owner to new account (owner funds the new accounts)
+      const ownerPrincipal = DEMO_ACCOUNTS[0].principal;
+      const ownerBalance = this.getBalance(ownerPrincipal);
+      
+      if (ownerBalance >= initialBalance) {
+        // Transfer tokens from owner to new account
+        this.balances.set(ownerPrincipal.toString(), ownerBalance - initialBalance);
+        
+        // Add transaction record
+        this.transactions.unshift({
+          id: Date.now().toString(),
+          from: ownerPrincipal,
+          to: principal,
+          amount: initialBalance,
+          timestamp: Date.now(),
+          description: `Welcome bonus: ${initialBalance} VAL for new account: ${name}`
+        });
+      } else {
+        console.warn('Owner has insufficient balance to fund new account');
+      }
+
+      // Save to storage
+      this.saveToStorage();
+
+      return { 
+        success: true, 
+        account: newAccount, 
+        message: `Account "${name}" created successfully with ${initialBalance} VAL welcome bonus! (${15 - this.customAccounts.length} free accounts remaining)` 
+      };
+
+    } catch (error) {
+      console.error('Account creation error:', error);
+      return { 
+        success: false, 
+        message: `Failed to create account: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
+  }
+
   switchAccount(accountId: string): DemoAccount | null {
-    const account = DEMO_ACCOUNTS.find(acc => acc.id === accountId);
+    const allAccounts = [...DEMO_ACCOUNTS, ...this.customAccounts];
+    const account = allAccounts.find(acc => acc.id === accountId);
     if (account) {
       this.currentAccount = account;
+      this.saveToStorage(); // Save current account selection
       return account;
     }
     return null;
@@ -160,6 +383,9 @@ export class DemoAccountManager {
       description: `Transfer to ${this.getAccountByPrincipal(to)?.name || 'Unknown'}`
     });
 
+    // Save to storage
+    this.saveToStorage();
+
     return { success: true, message: 'Transfer successful' };
   }
 
@@ -181,11 +407,45 @@ export class DemoAccountManager {
   }
 
   getAccountByPrincipal(principal: Principal): DemoAccount | undefined {
-    return DEMO_ACCOUNTS.find(acc => acc.principal.toString() === principal.toString());
+    const allAccounts = [...DEMO_ACCOUNTS, ...this.customAccounts];
+    return allAccounts.find(acc => acc.principal.toString() === principal.toString());
   }
 
   getAllAccounts(): DemoAccount[] {
-    return DEMO_ACCOUNTS;
+    return [...DEMO_ACCOUNTS, ...this.customAccounts];
+  }
+
+  getCustomAccounts(): DemoAccount[] {
+    return this.customAccounts;
+  }
+
+  // Delete a custom account (only custom accounts can be deleted, not default ones)
+  deleteAccount(accountId: string): { success: boolean; message: string } {
+    // Prevent deletion of default accounts
+    if (DEMO_ACCOUNTS.some(acc => acc.id === accountId)) {
+      return { success: false, message: 'Cannot delete default accounts' };
+    }
+
+    const accountIndex = this.customAccounts.findIndex(acc => acc.id === accountId);
+    if (accountIndex === -1) {
+      return { success: false, message: 'Account not found' };
+    }
+
+    const account = this.customAccounts[accountIndex];
+    
+    // If this is the current account, clear it
+    if (this.currentAccount?.id === accountId) {
+      this.currentAccount = null;
+    }
+
+    // Remove account and its balance
+    this.customAccounts.splice(accountIndex, 1);
+    this.balances.delete(account.principal.toString());
+
+    // Save to storage
+    this.saveToStorage();
+
+    return { success: true, message: `Account "${account.name}" deleted successfully` };
   }
 
   // Owner/Admin specific functions
@@ -224,10 +484,11 @@ export class DemoAccountManager {
     const totalSupply = this.getTotalSupply();
     const ownerBalance = this.getBalance(DEMO_ACCOUNTS[0].principal);
     const circulatingSupply = totalSupply - ownerBalance;
+    const totalAccounts = DEMO_ACCOUNTS.length + this.customAccounts.length;
     
     return {
       totalSupply,
-      totalAccounts: DEMO_ACCOUNTS.length,
+      totalAccounts,
       totalTransactions: this.transactions.length,
       ownerBalance,
       circulatingSupply
@@ -253,6 +514,9 @@ export class DemoAccountManager {
       timestamp: Date.now(),
       description: `Minted ${amount} VAL tokens`
     });
+
+    // Save to storage
+    this.saveToStorage();
 
     return { success: true, message: `Successfully minted ${amount} VAL tokens` };
   }
@@ -280,6 +544,9 @@ export class DemoAccountManager {
       description: `Burned ${amount} VAL tokens`
     });
 
+    // Save to storage
+    this.saveToStorage();
+
     return { success: true, message: `Successfully burned ${amount} VAL tokens` };
   }
 
@@ -288,7 +555,10 @@ export class DemoAccountManager {
     DEMO_ACCOUNTS.forEach(account => {
       this.balances.set(account.principal.toString(), account.initialBalance);
     });
+    this.customAccounts = [];
+    this.currentAccount = null;
     this.addSampleTransactions();
+    this.saveToStorage();
   }
 }
 

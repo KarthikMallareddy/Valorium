@@ -29,6 +29,9 @@ export interface UseBackendReturn {
   switchDemoAccount: (accountId: string) => void;
   resetDemo: () => void;
   toggleDemoMode: () => void;
+  createDemoAccount: (name: string, avatar?: string) => { success: boolean; account?: DemoAccount; message: string };
+  deleteDemoAccount: (accountId: string) => { success: boolean; message: string };
+  getCustomDemoAccounts: () => DemoAccount[];
 
   // Admin actions
   isOwner: () => boolean;
@@ -341,6 +344,36 @@ export function useBackend(): UseBackendReturn {
     }
   }, [getWalletInfo, getTransactionHistory]);
 
+  // Demo account management
+  const createDemoAccount = useCallback((name: string, avatar: string = '👤') => {
+    const result = backendService.createDemoAccount(name, avatar);
+    if (result.success) {
+      // Refresh demo accounts list
+      const updatedAccounts = backendService.getDemoAccounts();
+      // Force re-render by updating state if needed
+    }
+    return result;
+  }, []);
+
+  const deleteDemoAccount = useCallback((accountId: string) => {
+    const result = backendService.deleteDemoAccount(accountId);
+    if (result.success) {
+      // If deleted account was current, clear current account
+      const currentAccount = backendService.getCurrentDemoAccount();
+      if (!currentAccount) {
+        setCurrentDemoAccount(null);
+        setIsAuthenticated(false);
+        setWalletInfo(null);
+        setTransactions([]);
+      }
+    }
+    return result;
+  }, []);
+
+  const getCustomDemoAccounts = useCallback(() => {
+    return backendService.getCustomDemoAccounts();
+  }, []);
+
   // Auto-connect on mount
   useEffect(() => {
     connect();
@@ -371,6 +404,9 @@ export function useBackend(): UseBackendReturn {
     switchDemoAccount,
     resetDemo,
     toggleDemoMode,
+    createDemoAccount,
+    deleteDemoAccount,
+    getCustomDemoAccounts,
 
     // Admin actions
     isOwner,
