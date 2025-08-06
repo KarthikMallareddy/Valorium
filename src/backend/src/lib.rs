@@ -103,7 +103,8 @@ fn create_demo_accounts(state: &mut State) {
     
     for (name, avatar, balance) in demo_accounts {
         // Generate a pseudo-principal for demo accounts
-        let principal_bytes = format!("demo_{}", name).as_bytes();
+        let principal_string = format!("demo_{}", name);
+        let principal_bytes = principal_string.as_bytes();
         let mut padded_bytes = vec![0u8; 29];
         let copy_len = std::cmp::min(principal_bytes.len(), 29);
         padded_bytes[..copy_len].copy_from_slice(&principal_bytes[..copy_len]);
@@ -148,16 +149,7 @@ fn create_account(name: String, avatar: String) -> CreateAccountResult {
     STATE.with(|s| {
         let mut state = s.borrow_mut();
         
-        // Check if caller already has an account
-        if state.accounts.contains_key(&caller_principal) {
-            return CreateAccountResult {
-                success: false,
-                message: "Account already exists for this principal".to_string(),
-                account: None,
-            };
-        }
-        
-        // Check name uniqueness
+        // Check name uniqueness (names must be unique across all accounts)
         for account in state.accounts.values() {
             if account.name.to_lowercase() == name.to_lowercase() {
                 return CreateAccountResult {
@@ -168,7 +160,7 @@ fn create_account(name: String, avatar: String) -> CreateAccountResult {
             }
         }
         
-        // Check custom account limit
+        // Check custom account limit (global limit, not per caller)
         if state.custom_account_count >= MAX_FREE_ACCOUNTS {
             return CreateAccountResult {
                 success: false,
@@ -177,17 +169,34 @@ fn create_account(name: String, avatar: String) -> CreateAccountResult {
             };
         }
         
-        // Create new account
+        // Generate a unique principal for the new account (similar to demo accounts)
+        let account_id = state.custom_account_count + 1000; // Start from 1000 to avoid conflicts
+        let principal_string = format!("user_{}_{}", account_id, name.replace(" ", "_"));
+        let principal_bytes = principal_string.as_bytes();
+        let mut padded_bytes = vec![0u8; 29];
+        let copy_len = std::cmp::min(principal_bytes.len(), 29);
+        padded_bytes[..copy_len].copy_from_slice(&principal_bytes[..copy_len]);
+        
+        let account_principal = match Principal::try_from_slice(&padded_bytes) {
+            Ok(p) => p,
+            Err(_) => return CreateAccountResult {
+                success: false,
+                message: "Failed to generate account principal".to_string(),
+                account: None,
+            },
+        };
+        
+        // Create new account with generated principal
         let account = Account {
-            principal: caller_principal,
+            principal: account_principal,
             name: name.clone(),
             avatar: avatar.clone(),
             created_at: time(),
             is_custom: true,
         };
         
-        state.accounts.insert(caller_principal, account.clone());
-        state.balances.insert(caller_principal, WELCOME_BONUS);
+        state.accounts.insert(account_principal, account.clone());
+        state.balances.insert(account_principal, WELCOME_BONUS);
         state.custom_account_count += 1;
         
         // Transfer welcome bonus from owner if owner has enough balance
@@ -199,7 +208,7 @@ fn create_account(name: String, avatar: String) -> CreateAccountResult {
                     // Record transaction
                     let transaction = Transaction {
                         from: owner,
-                        to: caller_principal,
+                        to: account_principal,
                         amount: WELCOME_BONUS,
                         timestamp: time(),
                     };
@@ -394,8 +403,13 @@ fn burn_tokens(amount: u64) -> SimpleResult {
             };
         }
         
-        let owner_balance = state.balances.get_mut(&principal)
-            .ok_or("Owner account not found")?;
+        let owner_balance = match state.balances.get_mut(&principal) {
+            Some(balance) => balance,
+            None => return SimpleResult {
+                success: false,
+                message: "Owner account not found".to_string(),
+            },
+        };
         
         if *owner_balance < amount {
             return SimpleResult {
