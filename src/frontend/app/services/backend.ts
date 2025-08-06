@@ -9,8 +9,8 @@ import { demoAccountManager, DemoAccount } from './demoAccounts';
 // Replace with your actual canister ID
 const BACKEND_CANISTER_ID = process.env.NEXT_PUBLIC_BACKEND_CANISTER_ID || 'bw4dl-smaaa-aaaaa-qaacq-cai';
 
-// Demo mode flag
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || true; // Enable demo mode by default
+// Demo mode flag - set to false to use real backend
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || false; // Use real backend by default
 
 // Types from generated declarations
 export interface WalletInfo {
@@ -32,6 +32,8 @@ class BackendService {
   private authClient: AuthClient | null = null;
   private agent: HttpAgent | null = null;
   private demoMode: boolean = DEMO_MODE;
+  private currentAccount: any = null; // For real backend account tracking
+  private allRealAccounts: any[] = []; // Cache of all real accounts
 
   async init() {
     try {
@@ -40,10 +42,7 @@ class BackendService {
         return true;
       }
 
-      // Initialize auth client
-      this.authClient = await AuthClient.create();
-      
-      // Create agent
+      // Create agent without authentication for simplified flow
       this.agent = new HttpAgent({
         host: process.env.NODE_ENV === 'production' 
           ? 'https://ic0.app' 
@@ -55,12 +54,16 @@ class BackendService {
         await this.agent.fetchRootKey();
       }
 
-      // Create actor
+      // Create actor without authentication
       this.actor = Actor.createActor(idlFactory, {
         agent: this.agent,
         canisterId: BACKEND_CANISTER_ID,
       });
 
+      // Load all real accounts
+      await this.loadAllRealAccounts();
+
+      console.log('🚀 Real backend connected - no authentication required');
       return true;
     } catch (error) {
       console.error('Failed to initialize backend service:', error);
@@ -88,8 +91,12 @@ class BackendService {
     }
     
     try {
-      const result = await this.actor.create_wallet();
-      return result;
+      const result = await this.actor.register();
+      const walletInfo: WalletInfo = {
+        user_principal: result.user_principal,
+        balance: result.balance
+      };
+      return { Ok: walletInfo };
     } catch (error) {
       console.error('Error creating wallet:', error);
       return { Err: 'Failed to create wallet' };
@@ -114,10 +121,21 @@ class BackendService {
     if (!this.actor) {
       await this.init();
     }
+
+    // For real backend, we need to get wallet info for current account
+    const currentAccount = this.getCurrentRealAccount();
+    if (!currentAccount) {
+      return { Err: 'No account selected. Please create or select an account.' };
+    }
     
     try {
-      const result = await this.actor.get_wallet_info();
-      return result;
+      // Use the register function to get wallet info for current account
+      const result = await this.actor.register();
+      const walletInfo: WalletInfo = {
+        user_principal: currentAccount.principal,
+        balance: result.balance
+      };
+      return { Ok: walletInfo };
     } catch (error) {
       console.error('Error getting wallet info:', error);
       return { Err: 'Failed to get wallet info' };
@@ -147,7 +165,11 @@ class BackendService {
     try {
       const toPrincipal = Principal.fromText(to);
       const result = await this.actor.transfer(toPrincipal, BigInt(amount));
-      return result;
+      if ('Ok' in result) {
+        return { Ok: result.Ok };
+      } else {
+        return { Err: result.Err };
+      }
     } catch (error) {
       console.error('Error transferring:', error);
       return { Err: 'Failed to transfer' };
@@ -184,28 +206,9 @@ class BackendService {
       return true;
     }
 
-    if (!this.authClient) {
-      await this.init();
-    }
-
-    console.log('Starting login process...');
-    
-    return new Promise((resolve) => {
-      this.authClient?.login({
-        identityProvider: process.env.NODE_ENV === 'production' 
-          ? 'https://identity.ic0.app/#authorize'
-          : 'http://127.0.0.1:4943?canisterId=rdmx6-jaaaa-aaaaa-aaadq-cai#authorize',
-        onSuccess: () => {
-          console.log('Login successful!');
-          this.updateAgent();
-          resolve(true);
-        },
-        onError: (error) => {
-          console.error('Login failed:', error);
-          resolve(false);
-        },
-      });
-    });
+    // For real backend without authentication, just return true
+    console.log('🚀 Real backend: No authentication required');
+    return true;
   }
 
   async logout(): Promise<void> {
@@ -214,8 +217,8 @@ class BackendService {
       return;
     }
     
-    await this.authClient?.logout();
-    this.updateAgent();
+    // For real backend without authentication, just clear state
+    console.log('🚀 Real backend: Logout (clearing local state)');
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -223,13 +226,50 @@ class BackendService {
       return demoAccountManager.getCurrentAccount() !== null;
     }
 
-    if (!this.authClient) {
-      return false;
-    }
-    return await this.authClient.isAuthenticated();
+    // For real backend without authentication, always return true if connected
+    return this.actor !== null;
   }
 
-  // Demo-specific methods
+  // Real backend account management
+  async loadAllRealAccounts(): Promise<void> {
+    if (this.demoMode || !this.actor) return;
+    
+    try {
+      this.allRealAccounts = await this.actor.get_all_accounts();
+    } catch (error) {
+      console.error('Error loading real accounts:', error);
+      this.allRealAccounts = [];
+    }
+  }
+
+  switchRealAccount(accountPrincipal: string): any | null {
+    if (this.demoMode) return null;
+    
+    const account = this.allRealAccounts.find(acc => acc.principal.toString() === accountPrincipal);
+    if (account) {
+      this.currentAccount = account;
+      localStorage.setItem('currentRealAccount', accountPrincipal);
+      return account;
+    }
+    return null;
+  }
+
+  getCurrentRealAccount(): any | null {
+    if (this.demoMode) return null;
+    
+    // Try to restore from localStorage
+    if (!this.currentAccount) {
+      const stored = localStorage.getItem('currentRealAccount');
+      if (stored && this.allRealAccounts.length > 0) {
+        this.currentAccount = this.allRealAccounts.find(acc => acc.principal.toString() === stored);
+      }
+    }
+    return this.currentAccount;
+  }
+
+  getRealAccounts(): any[] {
+    return this.allRealAccounts;
+  }
   switchDemoAccount(accountId: string): DemoAccount | null {
     if (!this.demoMode) return null;
     return demoAccountManager.switchAccount(accountId);
@@ -239,8 +279,52 @@ class BackendService {
     return demoAccountManager.getAllAccounts();
   }
 
+  async getAllAccounts(): Promise<any[]> {
+    if (this.demoMode) {
+      return this.getDemoAccounts();
+    }
+
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      return await this.actor.get_all_accounts();
+    } catch (error) {
+      console.error('Error getting all accounts:', error);
+      return [];
+    }
+  }
+
   getCurrentDemoAccount(): DemoAccount | null {
     return demoAccountManager.getCurrentAccount();
+  }
+
+  // Universal account switching (works for both demo and real)
+  switchAccount(accountId: string): any | null {
+    if (this.demoMode) {
+      return this.switchDemoAccount(accountId);
+    } else {
+      return this.switchRealAccount(accountId);
+    }
+  }
+
+  // Universal current account getter
+  getCurrentAccount(): any | null {
+    if (this.demoMode) {
+      return demoAccountManager.getCurrentAccount();
+    } else {
+      return this.getCurrentRealAccount();
+    }
+  }
+
+  // Universal get all accounts
+  getAccounts(): any[] {
+    if (this.demoMode) {
+      return demoAccountManager.getAllAccounts();
+    } else {
+      return this.getRealAccounts();
+    }
   }
 
   createDemoAccount(name: string, avatar: string = '👤'): { success: boolean; account?: DemoAccount; message: string } {
@@ -248,6 +332,44 @@ class BackendService {
       return { success: false, message: 'Account creation only available in demo mode' };
     }
     return demoAccountManager.createAccount(name, avatar);
+  }
+
+  async createAccount(name: string, avatar: string = '👤'): Promise<{ success: boolean; account?: any; message: string }> {
+    if (this.demoMode) {
+      return this.createDemoAccount(name, avatar);
+    }
+
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      const result = await this.actor.create_account(name, avatar);
+      
+      if (result.success && result.account) {
+        // Reload all accounts to include the new one
+        await this.loadAllRealAccounts();
+        
+        // Switch to the newly created account
+        const newAccountPrincipal = result.account.principal.toString();
+        this.switchRealAccount(newAccountPrincipal);
+        
+        return {
+          success: result.success,
+          message: result.message,
+          account: result.account
+        };
+      } else {
+        return {
+          success: result.success,
+          message: result.message,
+          account: undefined
+        };
+      }
+    } catch (error) {
+      console.error('Error creating account:', error);
+      return { success: false, message: 'Failed to create account' };
+    }
   }
 
   deleteDemoAccount(accountId: string): { success: boolean; message: string } {
@@ -277,9 +399,21 @@ class BackendService {
   }
 
   // Owner/Admin functions
-  isOwner(): boolean {
-    if (!this.demoMode) return false;
-    return demoAccountManager.isOwner();
+  async isOwner(): Promise<boolean> {
+    if (this.demoMode) {
+      return demoAccountManager.isOwner();
+    }
+
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      return await this.actor.is_owner();
+    } catch (error) {
+      console.error('Error checking owner status:', error);
+      return false;
+    }
   }
 
   async getAllTransactions(): Promise<Transaction[]> {
@@ -293,8 +427,16 @@ class BackendService {
       }));
     }
 
-    // In real mode, this would require special backend permission
-    return this.getTransactionHistory();
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      return await this.actor.get_all_transactions();
+    } catch (error) {
+      console.error('Error getting all transactions:', error);
+      return [];
+    }
   }
 
   async getSystemStats(): Promise<{
@@ -308,14 +450,29 @@ class BackendService {
       return demoAccountManager.getSystemStats();
     }
 
-    // In real mode, implement backend call for system stats
-    return {
-      totalSupply: 0,
-      totalAccounts: 0,
-      totalTransactions: 0,
-      ownerBalance: 0,
-      circulatingSupply: 0
-    };
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      const result = await this.actor.get_system_stats();
+      return {
+        totalSupply: Number(result.total_supply),
+        totalAccounts: Number(result.total_accounts),
+        totalTransactions: Number(result.total_transactions),
+        ownerBalance: Number(result.owner_balance),
+        circulatingSupply: Number(result.circulating_supply)
+      };
+    } catch (error) {
+      console.error('Error getting system stats:', error);
+      return {
+        totalSupply: 0,
+        totalAccounts: 0,
+        totalTransactions: 0,
+        ownerBalance: 0,
+        circulatingSupply: 0
+      };
+    }
   }
 
   async mintTokens(amount: number): Promise<{ success: boolean; message: string }> {
@@ -323,8 +480,20 @@ class BackendService {
       return demoAccountManager.mintTokens(amount);
     }
 
-    // In real mode, implement backend call for minting
-    return { success: false, message: 'Minting not available in production mode' };
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      const result = await this.actor.mint_tokens(BigInt(amount));
+      return {
+        success: result.success,
+        message: result.message
+      };
+    } catch (error) {
+      console.error('Error minting tokens:', error);
+      return { success: false, message: 'Failed to mint tokens' };
+    }
   }
 
   async burnTokens(amount: number): Promise<{ success: boolean; message: string }> {
@@ -332,8 +501,20 @@ class BackendService {
       return demoAccountManager.burnTokens(amount);
     }
 
-    // In real mode, implement backend call for burning
-    return { success: false, message: 'Burning not available in production mode' };
+    if (!this.actor) {
+      await this.init();
+    }
+    
+    try {
+      const result = await this.actor.burn_tokens(BigInt(amount));
+      return {
+        success: result.success,
+        message: result.message
+      };
+    } catch (error) {
+      console.error('Error burning tokens:', error);
+      return { success: false, message: 'Failed to burn tokens' };
+    }
   }
 
   private updateAgent() {

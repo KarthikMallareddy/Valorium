@@ -30,11 +30,12 @@ export interface UseBackendReturn {
   resetDemo: () => void;
   toggleDemoMode: () => void;
   createDemoAccount: (name: string, avatar?: string) => { success: boolean; account?: DemoAccount; message: string };
+  createAccount: (name: string, avatar?: string) => Promise<{ success: boolean; account?: any; message: string }>;
   deleteDemoAccount: (accountId: string) => { success: boolean; message: string };
   getCustomDemoAccounts: () => DemoAccount[];
 
   // Admin actions
-  isOwner: () => boolean;
+  isOwner: () => Promise<boolean>;
   getAllTransactions: () => Promise<Transaction[]>;
   getSystemStats: () => Promise<{
     totalSupply: number;
@@ -57,6 +58,7 @@ export function useBackend(): UseBackendReturn {
   const [isDemoMode, setIsDemoMode] = useState(backendService.isDemoMode());
   const [currentDemoAccount, setCurrentDemoAccount] = useState<DemoAccount | null>(null);
   const [demoAccounts] = useState<DemoAccount[]>(backendService.getDemoAccounts());
+  const [allAccounts, setAllAccounts] = useState<any[]>([]); // For both demo and real accounts
 
   // Initialize connection
   const connect = useCallback(async () => {
@@ -67,14 +69,15 @@ export function useBackend(): UseBackendReturn {
       const success = await backendService.init();
       setIsConnected(success);
       
-      if (success && isDemoMode) {
-        // In demo mode, check if we have a current account
-        const currentAccount = backendService.getCurrentDemoAccount();
-        setCurrentDemoAccount(currentAccount);
+      if (success) {
+        // Load accounts for both modes
+        const accounts = backendService.getAccounts();
+        setAllAccounts(accounts);
+        
+        // Check current account
+        const currentAccount = backendService.getCurrentAccount();
+        setCurrentDemoAccount(currentAccount); // This works for both demo and real accounts
         setIsAuthenticated(currentAccount !== null);
-      } else if (success) {
-        const authStatus = await backendService.isAuthenticated();
-        setIsAuthenticated(authStatus);
       }
     } catch (err) {
       setError('Failed to connect to backend');
@@ -221,11 +224,15 @@ export function useBackend(): UseBackendReturn {
 
   // Demo-specific functions
   const switchDemoAccount = useCallback((accountId: string) => {
-    if (!isDemoMode) return;
-    
-    const account = backendService.switchDemoAccount(accountId);
+    const account = backendService.switchAccount(accountId); // Use universal function
     setCurrentDemoAccount(account);
     setIsAuthenticated(account !== null);
+    
+    // Update accounts list for real mode
+    if (!isDemoMode) {
+      const accounts = backendService.getAccounts();
+      setAllAccounts(accounts);
+    }
     
     if (account) {
       // Immediately refresh wallet info and transactions for new account
@@ -264,8 +271,8 @@ export function useBackend(): UseBackendReturn {
   }, [isDemoMode, connect]);
 
   // Admin functions
-  const isOwner = useCallback(() => {
-    return backendService.isOwner();
+  const isOwner = useCallback(async () => {
+    return await backendService.isOwner();
   }, []);
 
   const getAllTransactions = useCallback(async () => {
@@ -355,6 +362,26 @@ export function useBackend(): UseBackendReturn {
     return result;
   }, []);
 
+  const createAccount = useCallback(async (name: string, avatar: string = '👤') => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const result = await backendService.createAccount(name, avatar);
+      if (result.success) {
+        // Refresh wallet info and transaction history after account creation
+        await getWalletInfo();
+        await getTransactionHistory();
+      }
+      return result;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
+      return { success: false, message: 'Failed to create account' };
+    } finally {
+      setLoading(false);
+    }
+  }, [getWalletInfo, getTransactionHistory]);
+
   const deleteDemoAccount = useCallback((accountId: string) => {
     const result = backendService.deleteDemoAccount(accountId);
     if (result.success) {
@@ -405,6 +432,7 @@ export function useBackend(): UseBackendReturn {
     resetDemo,
     toggleDemoMode,
     createDemoAccount,
+    createAccount,
     deleteDemoAccount,
     getCustomDemoAccounts,
 

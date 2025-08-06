@@ -25,6 +25,7 @@ export default function Dashboard() {
     resetDemo,
     toggleDemoMode,
     createDemoAccount,
+    createAccount,
     deleteDemoAccount,
     getCustomDemoAccounts,
     isOwner,
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [mintAmount, setMintAmount] = useState('');
   const [burnAmount, setBurnAmount] = useState('');
   const [adminLoading, setAdminLoading] = useState(false);
+  const [userIsOwner, setUserIsOwner] = useState(false);
 
   // Account creation state
   const [showCreateAccount, setShowCreateAccount] = useState(false);
@@ -58,6 +60,20 @@ export default function Dashboard() {
       getTransactionHistory();
     }
   }, [isAuthenticated, isConnected, getWalletInfo, getTransactionHistory]);
+
+  // Check owner status when authenticated
+  useEffect(() => {
+    const checkOwnerStatus = async () => {
+      if (isAuthenticated) {
+        const ownerStatus = await isOwner();
+        setUserIsOwner(ownerStatus);
+      } else {
+        setUserIsOwner(false);
+      }
+    };
+    
+    checkOwnerStatus();
+  }, [isAuthenticated, isOwner]);
 
   const handleCreateWallet = async () => {
     if (!isAuthenticated) {
@@ -147,12 +163,12 @@ export default function Dashboard() {
     }
   };
 
-  // Load admin data when authenticated as owner
+  // Load admin data when user is owner
   useEffect(() => {
-    if (isAuthenticated && isOwner()) {
+    if (isAuthenticated && userIsOwner) {
       loadSystemStats();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, userIsOwner]);
 
   // Account creation functions
   const handleCreateAccount = async () => {
@@ -163,7 +179,7 @@ export default function Dashboard() {
 
     setAccountCreationLoading(true);
     try {
-      const result = createDemoAccount(newAccountName.trim(), newAccountAvatar);
+      const result = await createAccount(newAccountName.trim(), newAccountAvatar);
       
       if (result.success) {
         // Reset form
@@ -172,7 +188,7 @@ export default function Dashboard() {
         setShowCreateAccount(false);
         
         // Refresh system stats if owner
-        if (isOwner()) {
+        if (userIsOwner) {
           await loadSystemStats();
         }
         
@@ -192,7 +208,7 @@ export default function Dashboard() {
       
       if (result.success) {
         // Refresh system stats if owner
-        if (isOwner()) {
+        if (userIsOwner) {
           await loadSystemStats();
         }
         alert(result.message);
@@ -497,7 +513,7 @@ export default function Dashboard() {
       )}
 
       {/* Owner Admin Panel */}
-      {isAuthenticated && isOwner() && (
+      {isAuthenticated && userIsOwner && (
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-6">
             <span className="text-3xl">👑</span>
