@@ -1,0 +1,21 @@
+type Transaction = record {
+  from : principal;
+  to : principal;
+  amount : nat64;
+  timestamp : nat64;
+};
+
+type WalletInfo = record {
+  user_principal : principal;
+  balance : nat64;
+};
+
+type Result = variant { Ok : text; Err : text };
+type Result_1 = variant { Ok : WalletInfo; Err : text };
+
+service : {
+  create_wallet : () -> (Result_1);
+  transfer : (principal, nat64) -> (Result);
+  get_wallet_info : () -> (Result_1) query;
+  get_transaction_history : () -> (vec Transaction) query;
+}
