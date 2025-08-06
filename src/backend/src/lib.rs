@@ -394,8 +394,13 @@ fn burn_tokens(amount: u64) -> SimpleResult {
             };
         }
         
-        let owner_balance = state.balances.get_mut(&principal)
-            .ok_or("Owner account not found")?;
+        let owner_balance = match state.balances.get_mut(&principal) {
+            Some(balance) => balance,
+            None => return SimpleResult {
+                success: false,
+                message: "Owner account not found".to_string(),
+            },
+        };
         
         if *owner_balance < amount {
             return SimpleResult {
