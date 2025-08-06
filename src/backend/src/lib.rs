@@ -1,10 +1,8 @@
 use candid::{CandidType, Principal};
-use ic_cdk::{query, update, init, post_upgrade, caller, api::time};
-use ic_cdk_timers::TimerId;
+use ic_cdk::{query, update, caller, api::time};
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::time::Duration;
 
 type Balances = HashMap<Principal, u64>;
 
@@ -21,12 +19,11 @@ struct State {
     balances: Balances,
     registered_users: Vec<Principal>,
     transaction_log: Vec<Transaction>,
-    weekly_timer_id: Option<TimerId>,
 }
 
 #[derive(CandidType)]
 struct WalletInfo {
-    principal: Principal,
+    user_principal: Principal,
     balance: u64,
 }
 
@@ -38,37 +35,13 @@ const AIRDROP_COUNT: usize = 20;
 const AIRDROP_AMOUNT: u64 = 100;
 const WEEKLY_MINT_AMOUNT: u64 = 10;
 
-fn start_weekly_timer() {
-    let weekly_interval = Duration::from_secs(60 * 60 * 24 * 7);
-    let timer_id = ic_cdk_timers::set_timer_interval(weekly_interval, || {
-        ic_cdk::spawn(mint_new_coins());
-    });
-    STATE.with(|s| s.borrow_mut().weekly_timer_id = Some(timer_id));
-}
-
-#[init]
-fn init() { start_weekly_timer(); }
-
-#[post_upgrade]
-fn post_upgrade() { start_weekly_timer(); }
-
-async fn mint_new_coins() {
-    STATE.with(|s| {
-        let mut state = s.borrow_mut();
-        for principal in &state.registered_users {
-            let balance = state.balances.entry(*principal).or_insert(0);
-            *balance += WEEKLY_MINT_AMOUNT;
-        }
-    });
-}
-
 #[update]
 fn register() -> WalletInfo {
     let caller_principal = caller();
     STATE.with(|s| {
         let mut state = s.borrow_mut();
         if let Some(balance) = state.balances.get(&caller_principal) {
-            return WalletInfo { principal: caller_principal, balance: *balance };
+            return WalletInfo { user_principal: caller_principal, balance: *balance };
         }
         state.registered_users.push(caller_principal);
         let user_index = state.registered_users.len();
@@ -77,7 +50,7 @@ fn register() -> WalletInfo {
             initial_balance = AIRDROP_AMOUNT;
         }
         state.balances.insert(caller_principal, initial_balance);
-        WalletInfo { principal: caller_principal, balance: initial_balance }
+        WalletInfo { user_principal: caller_principal, balance: initial_balance }
     })
 }
 
@@ -108,7 +81,7 @@ fn get_wallet_info() -> Result<WalletInfo, String> {
     STATE.with(|s| {
         let state = s.borrow();
         match state.balances.get(&principal) {
-            Some(balance) => Ok(WalletInfo { principal, balance: *balance }),
+            Some(balance) => Ok(WalletInfo { user_principal: principal, balance: *balance }),
             None => Err("User not found.".to_string()),
         }
     })

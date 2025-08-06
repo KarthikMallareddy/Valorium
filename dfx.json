@@ -18,8 +18,8 @@
   },
   "defaults": {
     "build": {
-      "packtool": "npm --prefix src/frontend",
-      "args": "install"
+      "packtool": "npm --prefix src/frontend run",
+      "args": "build"
     }
   },
   "output_env_file": ".env"
