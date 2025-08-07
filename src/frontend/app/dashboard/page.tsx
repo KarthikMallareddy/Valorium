@@ -15,6 +15,7 @@ export default function Dashboard() {
     isDemoMode,
     currentDemoAccount,
     demoAccounts,
+    allAccounts,
     login,
     logout,
     createWallet,
@@ -23,7 +24,6 @@ export default function Dashboard() {
     getTransactionHistory,
     switchDemoAccount,
     resetDemo,
-    toggleDemoMode,
     createDemoAccount,
     createAccount,
     deleteDemoAccount,
@@ -238,24 +238,14 @@ export default function Dashboard() {
         
         {/* Demo Mode Toggle */}
         <div className="flex items-center space-x-4">
-          <label className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              checked={isDemoMode}
-              onChange={toggleDemoMode}
-              className="rounded"
-            />
-            <span className="text-sm">Demo Mode</span>
-          </label>
+          <span className="text-sm font-medium text-green-600">🎭 Demo Mode Active</span>
           
-          {isDemoMode && (
-            <button
-              onClick={resetDemo}
-              className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
-            >
-              Reset Demo
-            </button>
-          )}
+          <button
+            onClick={resetDemo}
+            className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
+          >
+            Reset Demo
+          </button>
         </div>
       </div>
       
@@ -458,62 +448,33 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Authentication Section */}
-      {!isAuthenticated ? (
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {isDemoMode ? 'Select Demo Account' : 'Connect Your Internet Identity'}
-          </h2>
-          <p className="text-gray-600 mb-4">
-            {isDemoMode 
-              ? 'Choose a demo account above to start using Valorium Currency!' 
-              : 'To use Valorium Currency, you need to authenticate with Internet Identity.'
-            }
-          </p>
-          <button 
-            onClick={login}
-            disabled={loading}
-            className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Connecting...' : isDemoMode ? 'Use Demo Account' : 'Connect Internet Identity'}
-          </button>
-        </div>
-      ) : (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <p className="text-green-700">
-                ✅ {isDemoMode ? `Connected as ${currentDemoAccount?.name}` : 'Connected to Internet Identity'}
-              </p>
-              {isDemoMode && currentDemoAccount && (
-                <span className="text-2xl">{currentDemoAccount.avatar}</span>
-              )}
-            </div>
-            <button 
-              onClick={logout}
-              className="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
-            >
-              {isDemoMode ? 'Switch Account' : 'Logout'}
-            </button>
+      {/* Welcome Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <span className="text-3xl">🚀</span>
+          <div>
+            <h2 className="text-xl font-semibold text-blue-800">Welcome to Valorium Currency!</h2>
+            <p className="text-blue-600">Create your account below to get started with 100 VAL tokens</p>
           </div>
-          
-          {/* Show special message for custom accounts */}
-          {isDemoMode && currentDemoAccount && getCustomDemoAccounts().some(acc => acc.id === currentDemoAccount.id) && (
-            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <div className="flex items-center space-x-2">
-                <span className="text-blue-600">🎉</span>
-                <p className="text-blue-800 font-medium">Welcome to your custom account!</p>
-              </div>
-              <p className="text-blue-700 text-sm mt-1">
-                You have 100 VAL to start with. Use the transfer section below to send tokens to other accounts!
-              </p>
-            </div>
-          )}
         </div>
-      )}
+        
+        {currentDemoAccount && (
+          <div className="mt-3 p-3 bg-white border border-blue-200 rounded-md">
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">{currentDemoAccount.avatar}</span>
+              <div>
+                <p className="font-medium text-gray-800">Currently using: {currentDemoAccount.name}</p>
+                <p className="text-sm text-gray-600">
+                  Principal: {formatPrincipal(currentDemoAccount.principal)}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Owner Admin Panel */}
-      {isAuthenticated && userIsOwner && (
+      {userIsOwner && (
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg p-6 mb-6">
           <div className="flex items-center space-x-3 mb-6">
             <span className="text-3xl">👑</span>
@@ -657,7 +618,7 @@ export default function Dashboard() {
       )}
 
       {/* Wallet Balance Card */}
-      {isAuthenticated && (
+      {isConnected && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Your Wallet</h2>
           
@@ -693,7 +654,7 @@ export default function Dashboard() {
       )}
 
       {/* Quick Transfer to Demo Accounts */}
-      {isAuthenticated && walletInfo && isDemoMode && (
+      {walletInfo && isDemoMode && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Quick Transfer to Other Accounts</h2>
           <p className="text-gray-600 mb-4">
@@ -757,7 +718,7 @@ export default function Dashboard() {
       )}
 
       {/* Transfer Section */}
-      {isAuthenticated && walletInfo && (
+      {walletInfo && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Send VAL</h2>
           <form onSubmit={handleTransfer} className="space-y-4">
@@ -801,7 +762,7 @@ export default function Dashboard() {
       )}
 
       {/* Transaction History */}
-      {isAuthenticated && (
+      {isConnected && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Transaction History</h2>

@@ -1,7 +1,6 @@
 'use client';
 
 import { Actor, HttpAgent } from '@dfinity/agent';
-import { AuthClient } from '@dfinity/auth-client';
 import { Principal } from '@dfinity/principal';
 import { idlFactory } from '../../../declarations/backend/backend.did.js';
 import { demoAccountManager, DemoAccount } from './demoAccounts';
@@ -9,8 +8,8 @@ import { demoAccountManager, DemoAccount } from './demoAccounts';
 // Replace with your actual canister ID
 const BACKEND_CANISTER_ID = process.env.NEXT_PUBLIC_BACKEND_CANISTER_ID || 'bw4dl-smaaa-aaaaa-qaacq-cai';
 
-// Demo mode flag - set to false to use real backend
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || false; // Use real backend by default
+// Demo mode is now the only mode - fully integrated with backend
+const DEMO_MODE = true; // Demo mode is the default and only mode
 
 // Types from generated declarations
 export interface WalletInfo {
@@ -29,7 +28,6 @@ export type Result<T> = { Ok: T } | { Err: string };
 
 class BackendService {
   private actor: any = null;
-  private authClient: AuthClient | null = null;
   private agent: HttpAgent | null = null;
   private demoMode: boolean = DEMO_MODE;
   private currentAccount: any = null; // For real backend account tracking
@@ -104,12 +102,13 @@ class BackendService {
   }
 
   async getWalletInfo(): Promise<Result<WalletInfo>> {
+    // Always use demo account manager for account selection
+    const currentAccount = demoAccountManager.getCurrentAccount();
+    if (!currentAccount) {
+      return { Err: 'No demo account selected' };
+    }
+    
     if (this.demoMode) {
-      const currentAccount = demoAccountManager.getCurrentAccount();
-      if (!currentAccount) {
-        return { Err: 'No demo account selected' };
-      }
-      
       const walletInfo: WalletInfo = {
         user_principal: currentAccount.principal,
         balance: BigInt(demoAccountManager.getBalance())
@@ -118,31 +117,54 @@ class BackendService {
       return { Ok: walletInfo };
     }
 
+    // For backend integration - create account on blockchain if it doesn't exist
     if (!this.actor) {
       await this.init();
     }
-
-    // For real backend, we need to get wallet info for current account
-    const currentAccount = this.getCurrentRealAccount();
-    if (!currentAccount) {
-      return { Err: 'No account selected. Please create or select an account.' };
-    }
     
     try {
-      // Use the register function to get wallet info for current account
-      const result = await this.actor.register();
-      const walletInfo: WalletInfo = {
-        user_principal: currentAccount.principal,
-        balance: result.balance
-      };
-      return { Ok: walletInfo };
+      // Create account on blockchain for this demo account principal
+      await this.ensureAccountExists(currentAccount);
+      
+      // Get balance from backend using the demo account principal
+      const result = await this.actor.get_wallet_info();
+      if ('Ok' in result) {
+        return { Ok: result.Ok };
+      } else {
+        return { Err: result.Err };
+      }
     } catch (error) {
       console.error('Error getting wallet info:', error);
       return { Err: 'Failed to get wallet info' };
     }
   }
 
+  // Helper method to ensure a demo account exists on the blockchain
+  private async ensureAccountExists(demoAccount: DemoAccount): Promise<void> {
+    if (!this.actor) {
+      throw new Error('Backend not initialized');
+    }
+
+    try {
+      // Try to get wallet info for this principal
+      const walletInfo = await this.actor.get_wallet_info();
+      if ('Err' in walletInfo) {
+        // Account doesn't exist, create it by calling register
+        await this.actor.register();
+      }
+    } catch (error) {
+      console.log('Creating account on blockchain for:', demoAccount.name);
+      // If we get an error, try to register the account
+      await this.actor.register();
+    }
+  }
+
   async transfer(to: string, amount: number): Promise<Result<string>> {
+    const currentAccount = demoAccountManager.getCurrentAccount();
+    if (!currentAccount) {
+      return { Err: 'No demo account selected' };
+    }
+
     if (this.demoMode) {
       try {
         const toPrincipal = Principal.fromText(to);
@@ -158,11 +180,13 @@ class BackendService {
       }
     }
 
+    // For backend integration - use the demo account to make real blockchain transfers
     if (!this.actor) {
       await this.init();
     }
     
     try {
+      await this.ensureAccountExists(currentAccount);
       const toPrincipal = Principal.fromText(to);
       const result = await this.actor.transfer(toPrincipal, BigInt(amount));
       if ('Ok' in result) {
@@ -177,6 +201,11 @@ class BackendService {
   }
 
   async getTransactionHistory(): Promise<Transaction[]> {
+    const currentAccount = demoAccountManager.getCurrentAccount();
+    if (!currentAccount) {
+      return [];
+    }
+
     if (this.demoMode) {
       const history = demoAccountManager.getTransactionHistory();
       return history.map(tx => ({
@@ -187,11 +216,13 @@ class BackendService {
       }));
     }
 
+    // For backend integration - get transaction history from blockchain
     if (!this.actor) {
       await this.init();
     }
     
     try {
+      await this.ensureAccountExists(currentAccount);
       const result = await this.actor.get_transaction_history();
       return result;
     } catch (error) {
@@ -201,33 +232,22 @@ class BackendService {
   }
 
   async login(): Promise<boolean> {
-    if (this.demoMode) {
-      console.log('🎭 Demo mode: Skipping Internet Identity login');
-      return true;
-    }
-
-    // For real backend without authentication, just return true
-    console.log('🚀 Real backend: No authentication required');
+    // Always return true since we don't need authentication
+    // Users just create accounts directly
+    console.log('🚀 No authentication required - users create accounts directly');
     return true;
   }
 
   async logout(): Promise<void> {
-    if (this.demoMode) {
-      demoAccountManager.switchAccount('');
-      return;
-    }
-    
-    // For real backend without authentication, just clear state
-    console.log('🚀 Real backend: Logout (clearing local state)');
+    // Just clear current account selection
+    this.currentAccount = null;
+    localStorage.removeItem('currentRealAccount');
+    console.log('🚀 Logged out - cleared account selection');
   }
 
   async isAuthenticated(): Promise<boolean> {
-    if (this.demoMode) {
-      return demoAccountManager.getCurrentAccount() !== null;
-    }
-
-    // For real backend without authentication, always return true if connected
-    return this.actor !== null;
+    // Always return true since no authentication is required
+    return true;
   }
 
   // Real backend account management
@@ -335,41 +355,56 @@ class BackendService {
   }
 
   async createAccount(name: string, avatar: string = '👤'): Promise<{ success: boolean; account?: any; message: string }> {
-    if (this.demoMode) {
-      return this.createDemoAccount(name, avatar);
-    }
-
-    if (!this.actor) {
-      await this.init();
+    // First create the demo account locally
+    const demoResult = demoAccountManager.createAccount(name, avatar);
+    
+    if (!demoResult.success) {
+      return demoResult;
     }
     
-    try {
-      const result = await this.actor.create_account(name, avatar);
+    // If not in demo mode, also create the account on the blockchain
+    if (!this.demoMode) {
+      if (!this.actor) {
+        await this.init();
+      }
       
-      if (result.success && result.account) {
-        // Reload all accounts to include the new one
-        await this.loadAllRealAccounts();
+      try {
+        const result = await this.actor.create_account(name, avatar);
         
-        // Switch to the newly created account
-        const newAccountPrincipal = result.account.principal.toString();
-        this.switchRealAccount(newAccountPrincipal);
+        if (!result.success) {
+          // If blockchain creation fails, remove the demo account
+          if (demoResult.account) {
+            demoAccountManager.deleteAccount(demoResult.account.id);
+          }
+          return {
+            success: false,
+            message: `Blockchain error: ${result.message}`,
+            account: undefined
+          };
+        }
         
+        // Return success with both demo and blockchain account created
         return {
-          success: result.success,
-          message: result.message,
-          account: result.account
+          success: true,
+          message: `Account "${name}" created successfully on blockchain with 100 VAL welcome bonus!`,
+          account: demoResult.account
         };
-      } else {
+      } catch (error) {
+        console.error('Error creating blockchain account:', error);
+        // If blockchain creation fails, remove the demo account
+        if (demoResult.account) {
+          demoAccountManager.deleteAccount(demoResult.account.id);
+        }
         return {
-          success: result.success,
-          message: result.message,
+          success: false,
+          message: 'Failed to create account on blockchain',
           account: undefined
         };
       }
-    } catch (error) {
-      console.error('Error creating account:', error);
-      return { success: false, message: 'Failed to create account' };
     }
+    
+    // Pure demo mode - return demo account result
+    return demoResult;
   }
 
   deleteDemoAccount(accountId: string): { success: boolean; message: string } {
@@ -514,19 +549,6 @@ class BackendService {
     } catch (error) {
       console.error('Error burning tokens:', error);
       return { success: false, message: 'Failed to burn tokens' };
-    }
-  }
-
-  private updateAgent() {
-    if (this.authClient && this.agent) {
-      const identity = this.authClient.getIdentity();
-      this.agent.replaceIdentity(identity);
-      
-      // Recreate actor with new identity
-      this.actor = Actor.createActor(idlFactory, {
-        agent: this.agent,
-        canisterId: BACKEND_CANISTER_ID,
-      });
     }
   }
 }

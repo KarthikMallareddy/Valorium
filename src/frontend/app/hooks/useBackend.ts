@@ -15,6 +15,7 @@ export interface UseBackendReturn {
   isDemoMode: boolean;
   currentDemoAccount: DemoAccount | null;
   demoAccounts: DemoAccount[];
+  allAccounts: any[];
 
   // Actions
   connect: () => Promise<void>;
@@ -28,7 +29,6 @@ export interface UseBackendReturn {
   // Demo actions
   switchDemoAccount: (accountId: string) => void;
   resetDemo: () => void;
-  toggleDemoMode: () => void;
   createDemoAccount: (name: string, avatar?: string) => { success: boolean; account?: DemoAccount; message: string };
   createAccount: (name: string, avatar?: string) => Promise<{ success: boolean; account?: any; message: string }>;
   deleteDemoAccount: (accountId: string) => { success: boolean; message: string };
@@ -55,12 +55,12 @@ export function useBackend(): UseBackendReturn {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(backendService.isDemoMode());
+  const [isDemoMode] = useState(true); // Demo mode is now the only mode
   const [currentDemoAccount, setCurrentDemoAccount] = useState<DemoAccount | null>(null);
   const [demoAccounts] = useState<DemoAccount[]>(backendService.getDemoAccounts());
   const [allAccounts, setAllAccounts] = useState<any[]>([]); // For both demo and real accounts
 
-  // Initialize connection
+  // Initialize connection and set authenticated immediately
   const connect = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -77,7 +77,9 @@ export function useBackend(): UseBackendReturn {
         // Check current account
         const currentAccount = backendService.getCurrentAccount();
         setCurrentDemoAccount(currentAccount); // This works for both demo and real accounts
-        setIsAuthenticated(currentAccount !== null);
+        
+        // Always set authenticated to true since no auth is required
+        setIsAuthenticated(true);
       }
     } catch (err) {
       setError('Failed to connect to backend');
@@ -87,36 +89,12 @@ export function useBackend(): UseBackendReturn {
     }
   }, [isDemoMode]);
 
-  // Login function
+  // Login function - always succeeds since no auth needed
   const login = useCallback(async (): Promise<boolean> => {
-    if (isDemoMode) {
-      // In demo mode, just select first account if none selected
-      if (!currentDemoAccount) {
-        const firstAccount = backendService.switchDemoAccount('1');
-        if (firstAccount) {
-          setCurrentDemoAccount(firstAccount);
-          setIsAuthenticated(true);
-          return true;
-        }
-      }
-      return true;
-    }
-
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const success = await backendService.login();
-      setIsAuthenticated(success);
-      return success;
-    } catch (err) {
-      setError('Failed to login');
-      console.error('Login error:', err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, [isDemoMode, currentDemoAccount]);
+    console.log('🚀 Login called - no authentication required');
+    setIsAuthenticated(true);
+    return true;
+  }, []);
 
   // Logout function
   const logout = useCallback(async () => {
@@ -254,21 +232,6 @@ export function useBackend(): UseBackendReturn {
       getTransactionHistory();
     }
   }, [isDemoMode, currentDemoAccount, getWalletInfo, getTransactionHistory]);
-
-  const toggleDemoMode = useCallback(() => {
-    const newDemoMode = !isDemoMode;
-    backendService.setDemoMode(newDemoMode);
-    setIsDemoMode(newDemoMode);
-    
-    // Reset states when switching modes
-    setIsAuthenticated(false);
-    setWalletInfo(null);
-    setTransactions([]);
-    setCurrentDemoAccount(null);
-    
-    // Reconnect with new mode
-    connect();
-  }, [isDemoMode, connect]);
 
   // Admin functions
   const isOwner = useCallback(async () => {
@@ -417,6 +380,7 @@ export function useBackend(): UseBackendReturn {
     isDemoMode,
     currentDemoAccount,
     demoAccounts,
+    allAccounts,
 
     // Actions
     connect,
@@ -430,7 +394,6 @@ export function useBackend(): UseBackendReturn {
     // Demo actions
     switchDemoAccount,
     resetDemo,
-    toggleDemoMode,
     createDemoAccount,
     createAccount,
     deleteDemoAccount,
