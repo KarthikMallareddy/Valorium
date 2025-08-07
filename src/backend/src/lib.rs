@@ -262,6 +262,37 @@ fn transfer(to: Principal, amount: u64) -> Result<String, String> {
     })
 }
 
+#[update]
+fn transfer_from_account(from: Principal, to: Principal, amount: u64) -> Result<String, String> {
+    if to == from { 
+        return Err("Cannot transfer to yourself.".to_string()); 
+    }
+
+    STATE.with(|s| {
+        let mut state = s.borrow_mut();
+        let from_balance = state.balances.get_mut(&from)
+            .ok_or("Source account does not exist.".to_string())?;
+        
+        if *from_balance < amount { 
+            return Err("Insufficient funds.".to_string()); 
+        }
+
+        *from_balance -= amount;
+        let to_balance = state.balances.entry(to).or_insert(0);
+        *to_balance += amount;
+
+        let transaction = Transaction { 
+            from, 
+            to, 
+            amount, 
+            timestamp: time() 
+        };
+        state.transaction_log.push(transaction);
+
+        Ok("Transfer successful.".to_string())
+    })
+}
+
 #[query]
 fn get_wallet_info() -> Result<WalletInfo, String> {
     let principal = caller();
@@ -278,8 +309,26 @@ fn get_wallet_info() -> Result<WalletInfo, String> {
 }
 
 #[query]
+fn get_balance_by_principal(principal: Principal) -> u64 {
+    STATE.with(|s| {
+        let state = s.borrow();
+        state.balances.get(&principal).copied().unwrap_or(0)
+    })
+}
+
+#[query]
 fn get_transaction_history() -> Vec<Transaction> {
     let principal = caller();
+    STATE.with(|s| {
+        s.borrow().transaction_log.iter()
+            .filter(|tx| tx.from == principal || tx.to == principal)
+            .cloned()
+            .collect()
+    })
+}
+
+#[query]
+fn get_transaction_history_by_principal(principal: Principal) -> Vec<Transaction> {
     STATE.with(|s| {
         s.borrow().transaction_log.iter()
             .filter(|tx| tx.from == principal || tx.to == principal)
